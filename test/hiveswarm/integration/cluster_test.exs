@@ -17,7 +17,9 @@ defmodule Hiveswarm.Integration.ClusterTest do
     key_pair = Crypto.generate_key_pair()
     own_id = Crypto.node_id(key_pair.public_key)
 
-    {:ok, store} = Store.start_link(name: :"store_#{name_suffix}", cleanup_interval_ms: :timer.hours(24))
+    {:ok, store} =
+      Store.start_link(name: :"store_#{name_suffix}", cleanup_interval_ms: :timer.hours(24))
+
     {:ok, rt} = RoutingTable.start_link(own_id: own_id, k: 20, name: :"rt_#{name_suffix}")
 
     {:ok, server} =

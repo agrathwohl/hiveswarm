@@ -69,7 +69,6 @@ defmodule Hiveswarm.Bootstrap do
       state.own_port,
       state.routing_table,
       state.own_id,
-      alpha: 3,
       k: 20,
       timeout: 5_000
     )

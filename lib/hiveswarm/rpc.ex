@@ -125,10 +125,19 @@ defmodule Hiveswarm.RPC do
     envelope(@find_value_req, txn, <<sid::binary-size(32), sp::16, key::binary-size(32)>>)
   end
 
-  def encode(%FindValueResponse{txn_id: txn, sender_id: sid, value: nil, contacts: contacts, token: tok}) do
+  def encode(%FindValueResponse{
+        txn_id: txn,
+        sender_id: sid,
+        value: nil,
+        contacts: contacts,
+        token: tok
+      }) do
     tok = tok || <<>>
     tok_len = byte_size(tok)
-    payload = <<sid::binary-size(32), tok_len::8, tok::binary, 0::8, encode_contacts(contacts)::binary>>
+
+    payload =
+      <<sid::binary-size(32), tok_len::8, tok::binary, 0::8, encode_contacts(contacts)::binary>>
+
     envelope(@find_value_resp, txn, payload)
   end
 
@@ -140,13 +149,20 @@ defmodule Hiveswarm.RPC do
     envelope(@find_value_resp, txn, payload)
   end
 
-  def encode(%StoreRequest{txn_id: txn, sender_id: sid, sender_port: sp, key: key, value: val, token: tok}) do
+  def encode(%StoreRequest{
+        txn_id: txn,
+        sender_id: sid,
+        sender_port: sp,
+        key: key,
+        value: val,
+        token: tok
+      }) do
     tok_len = byte_size(tok)
     val_len = byte_size(val)
 
     payload =
-      <<sid::binary-size(32), sp::16, key::binary-size(32), tok_len::16, tok::binary-size(tok_len),
-        val_len::32, val::binary>>
+      <<sid::binary-size(32), sp::16, key::binary-size(32), tok_len::16,
+        tok::binary-size(tok_len), val_len::32, val::binary>>
 
     envelope(@store_req, txn, payload)
   end
@@ -156,10 +172,19 @@ defmodule Hiveswarm.RPC do
     envelope(@store_resp, txn, <<sid::binary-size(32), flag::8>>)
   end
 
-  def encode(%AnnounceRequest{txn_id: txn, sender_id: sid, sender_port: sp, topic: topic, token: tok}) do
+  def encode(%AnnounceRequest{
+        txn_id: txn,
+        sender_id: sid,
+        sender_port: sp,
+        topic: topic,
+        token: tok
+      }) do
     topic_len = byte_size(topic)
     tok_len = byte_size(tok)
-    payload = <<sid::binary-size(32), sp::16, topic_len::16, topic::binary, tok_len::16, tok::binary>>
+
+    payload =
+      <<sid::binary-size(32), sp::16, topic_len::16, topic::binary, tok_len::16, tok::binary>>
+
     envelope(@announce_req, txn, payload)
   end
 
@@ -213,7 +238,11 @@ defmodule Hiveswarm.RPC do
     {:ok, %FindNodeRequest{txn_id: txn, sender_id: sid, sender_port: sp, target_id: tid}}
   end
 
-  defp decode_type(@find_node_resp, txn, <<sid::binary-size(32), tok_len::8, tok::binary-size(tok_len), rest::binary>>) do
+  defp decode_type(
+         @find_node_resp,
+         txn,
+         <<sid::binary-size(32), tok_len::8, tok::binary-size(tok_len), rest::binary>>
+       ) do
     case decode_contacts(rest) do
       {:ok, contacts} ->
         {:ok, %FindNodeResponse{txn_id: txn, sender_id: sid, contacts: contacts, token: tok}}
@@ -227,37 +256,69 @@ defmodule Hiveswarm.RPC do
     {:ok, %FindValueRequest{txn_id: txn, sender_id: sid, sender_port: sp, key: key}}
   end
 
-  defp decode_type(@find_value_resp, txn, <<sid::binary-size(32), tok_len::8, tok::binary-size(tok_len), 0::8, rest::binary>>) do
+  defp decode_type(
+         @find_value_resp,
+         txn,
+         <<sid::binary-size(32), tok_len::8, tok::binary-size(tok_len), 0::8, rest::binary>>
+       ) do
     case decode_contacts(rest) do
       {:ok, contacts} ->
-        {:ok, %FindValueResponse{txn_id: txn, sender_id: sid, value: nil, contacts: contacts, token: tok}}
+        {:ok,
+         %FindValueResponse{
+           txn_id: txn,
+           sender_id: sid,
+           value: nil,
+           contacts: contacts,
+           token: tok
+         }}
 
       err ->
         err
     end
   end
 
-  defp decode_type(@find_value_resp, txn, <<sid::binary-size(32), tok_len::8, tok::binary-size(tok_len), 1::8, val_len::32, value::binary-size(val_len)>>) do
+  defp decode_type(
+         @find_value_resp,
+         txn,
+         <<sid::binary-size(32), tok_len::8, tok::binary-size(tok_len), 1::8, val_len::32,
+           value::binary-size(val_len)>>
+       ) do
     {:ok, %FindValueResponse{txn_id: txn, sender_id: sid, value: value, contacts: [], token: tok}}
   end
 
-  defp decode_type(@store_req, txn, <<sid::binary-size(32), sp::16, key::binary-size(32), tok_len::16, tok::binary-size(tok_len), val_len::32, val::binary-size(val_len)>>) do
-    {:ok, %StoreRequest{txn_id: txn, sender_id: sid, sender_port: sp, key: key, value: val, token: tok}}
+  defp decode_type(
+         @store_req,
+         txn,
+         <<sid::binary-size(32), sp::16, key::binary-size(32), tok_len::16,
+           tok::binary-size(tok_len), val_len::32, val::binary-size(val_len)>>
+       ) do
+    {:ok,
+     %StoreRequest{txn_id: txn, sender_id: sid, sender_port: sp, key: key, value: val, token: tok}}
   end
 
   defp decode_type(@store_resp, txn, <<sid::binary-size(32), flag::8>>) do
     {:ok, %StoreResponse{txn_id: txn, sender_id: sid, ok: flag == 1}}
   end
 
-  defp decode_type(@announce_req, txn, <<sid::binary-size(32), sp::16, topic_len::16, topic::binary-size(topic_len), tok_len::16, tok::binary-size(tok_len)>>) do
-    {:ok, %AnnounceRequest{txn_id: txn, sender_id: sid, sender_port: sp, topic: topic, token: tok}}
+  defp decode_type(
+         @announce_req,
+         txn,
+         <<sid::binary-size(32), sp::16, topic_len::16, topic::binary-size(topic_len),
+           tok_len::16, tok::binary-size(tok_len)>>
+       ) do
+    {:ok,
+     %AnnounceRequest{txn_id: txn, sender_id: sid, sender_port: sp, topic: topic, token: tok}}
   end
 
   defp decode_type(@announce_resp, txn, <<sid::binary-size(32), flag::8>>) do
     {:ok, %AnnounceResponse{txn_id: txn, sender_id: sid, ok: flag == 1}}
   end
 
-  defp decode_type(@lookup_topic_req, txn, <<sid::binary-size(32), sp::16, topic_len::16, topic::binary-size(topic_len)>>) do
+  defp decode_type(
+         @lookup_topic_req,
+         txn,
+         <<sid::binary-size(32), sp::16, topic_len::16, topic::binary-size(topic_len)>>
+       ) do
     {:ok, %LookupTopicRequest{txn_id: txn, sender_id: sid, sender_port: sp, topic: topic}}
   end
 
@@ -304,7 +365,8 @@ defmodule Hiveswarm.RPC do
   defp decode_n_contacts(_, 0, acc), do: {:ok, Enum.reverse(acc)}
 
   defp decode_n_contacts(
-         <<nid::binary-size(32), host_len::8, host::binary-size(host_len), port::16, rest::binary>>,
+         <<nid::binary-size(32), host_len::8, host::binary-size(host_len), port::16,
+           rest::binary>>,
          n,
          acc
        )

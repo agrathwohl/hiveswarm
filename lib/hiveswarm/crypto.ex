@@ -129,7 +129,7 @@ defmodule Hiveswarm.Crypto do
     random_tail_bits = 255 - bucket_index
     random_tail = random_integer(random_tail_bits)
     # Set bit (255 - bucket_index) and OR in the random tail
-    value = (1 <<< random_tail_bits) ||| random_tail
+    value = 1 <<< random_tail_bits ||| random_tail
     <<value::256>>
   end
 
@@ -139,6 +139,6 @@ defmodule Hiveswarm.Crypto do
     byte_count = div(bits + 7, 8)
     <<n::unsigned-size(byte_count * 8)>> = :crypto.strong_rand_bytes(byte_count)
     # Mask to the exact number of bits we need
-    n &&& ((1 <<< bits) - 1)
+    n &&& (1 <<< bits) - 1
   end
 end

@@ -149,11 +149,24 @@ defmodule Hiveswarm.RPC.Server do
 
     case Store.get(state.store, key) do
       {:ok, value} ->
-        %FindValueResponse{txn_id: txn, sender_id: state.own_id, value: value, contacts: [], token: token}
+        %FindValueResponse{
+          txn_id: txn,
+          sender_id: state.own_id,
+          value: value,
+          contacts: [],
+          token: token
+        }
 
       :not_found ->
         contacts = RoutingTable.closest(state.routing_table, key, 20)
-        %FindValueResponse{txn_id: txn, sender_id: state.own_id, value: nil, contacts: contacts, token: token}
+
+        %FindValueResponse{
+          txn_id: txn,
+          sender_id: state.own_id,
+          value: nil,
+          contacts: contacts,
+          token: token
+        }
     end
   end
 

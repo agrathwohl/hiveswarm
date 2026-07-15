@@ -4,7 +4,7 @@ defmodule Hiveswarm.MixProject do
   def project do
     [
       app: :hiveswarm,
-      version: "0.1.0",
+      version: "0.1.1",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps()
@@ -24,7 +24,6 @@ defmodule Hiveswarm.MixProject do
     [
       {:stream_data, "~> 1.0", only: [:test, :dev]},
       {:mox, "~> 1.0", only: :test},
-      {:telemetry, "~> 1.0"},
       {:ex_doc, "~> 0.30", only: :dev, runtime: false}
     ]
   end

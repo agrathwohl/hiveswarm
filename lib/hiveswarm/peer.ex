@@ -2,10 +2,10 @@ defmodule Hiveswarm.Peer do
   @moduledoc """
   Per-peer GenServer.
 
-  Tracks the state of a single remote peer: connection status, latency,
-  last-seen timestamp, topic membership, and pending RPC requests.
-  Periodically pings the remote node via the RPC layer and terminates
-  after 3 consecutive failures.
+  Tracks the state of a single remote peer: last-seen timestamp, failure
+  count, and topic membership. Messages are sent over a fresh transport
+  connection per send. Periodically pings the remote node via the RPC
+  layer and terminates after 3 consecutive failures.
   """
 
   use GenServer
@@ -91,6 +91,7 @@ defmodule Hiveswarm.Peer do
 
   def handle_call(:info, _from, state) do
     info = %{
+      pid: self(),
       node_id: state.node_id,
       host: state.host,
       port: state.port,

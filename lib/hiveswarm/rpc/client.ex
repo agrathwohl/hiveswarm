@@ -30,7 +30,14 @@ defmodule Hiveswarm.RPC.Client do
   @doc "Send a find_node RPC."
   def find_node(transport, own_id, own_port, peer, target_id, opts \\ []) do
     txn = RPC.gen_txn_id()
-    msg = %FindNodeRequest{txn_id: txn, sender_id: own_id, sender_port: own_port, target_id: target_id}
+
+    msg = %FindNodeRequest{
+      txn_id: txn,
+      sender_id: own_id,
+      sender_port: own_port,
+      target_id: target_id
+    }
+
     do_rpc(transport, peer, msg, txn, opts)
   end
 
@@ -44,7 +51,16 @@ defmodule Hiveswarm.RPC.Client do
   @doc "Send a store RPC."
   def store(transport, own_id, own_port, peer, key, value, token, opts \\ []) do
     txn = RPC.gen_txn_id()
-    msg = %StoreRequest{txn_id: txn, sender_id: own_id, sender_port: own_port, key: key, value: value, token: token}
+
+    msg = %StoreRequest{
+      txn_id: txn,
+      sender_id: own_id,
+      sender_port: own_port,
+      key: key,
+      value: value,
+      token: token
+    }
+
     do_rpc(transport, peer, msg, txn, opts)
   end
 

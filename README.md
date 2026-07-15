@@ -32,14 +32,14 @@ Hiveswarm.Application (Supervisor)
 
 | Module | Purpose |
 |--------|---------|
-| `Hiveswarm` | Top-level API: `join/1`, `leave/1`, `peers/0`, `broadcast/2` |
+| `Hiveswarm` | Top-level API: `join/1`, `leave/1`, `peers/0`, `peers/1`, `send_to/2`, `broadcast/2`, `node_id/0`, `info/0` |
 | `Hiveswarm.Crypto` | Ed25519 keypairs, SHA-256, XOR distance, signing |
 | `Hiveswarm.RPC` | Binary message encoding/decoding (13 types) |
-| `Hiveswarm.RPC.Client` | Outgoing RPCs (stateless, connection-per-request) |
+| `Hiveswarm.RPC.Client` | Outgoing RPCs: ping, find_node, find_value, store (stateless, connection-per-request) |
 | `Hiveswarm.RPC.Server` | Incoming RPC handler + routing table updates |
 | `Hiveswarm.Lookup` | Iterative Kademlia `find_node` / `find_value` |
-| `Hiveswarm.Store` | ETS storage with TTL, LRU eviction, size bounds |
-| `Hiveswarm.RoutingTable` | 256 flat k-buckets, insert/closest/remove |
+| `Hiveswarm.Store` | ETS storage with TTL, LRU eviction, size bounds (defaults: 24 h TTL, 10k entries, 1 KiB max value) |
+| `Hiveswarm.RoutingTable` | 256 flat k-buckets: insert, closest, remove, stale tracking, refresh candidates |
 | `Hiveswarm.Peer` | Per-peer GenServer with ping keepalive |
 | `Hiveswarm.PeerSupervisor` | DynamicSupervisor for Peer processes |
 | `Hiveswarm.Discovery` | Topic-based announce + lookup via DHT store |
@@ -48,8 +48,7 @@ Hiveswarm.Application (Supervisor)
 | `Hiveswarm.Transport` | Behaviour (8 callbacks) |
 | `Hiveswarm.Transport.TcpPlain` | Unencrypted TCP with `packet: 4` framing |
 | `Hiveswarm.Transport.TcpNoise` | X25519 + ChaCha20-Poly1305 encrypted TCP |
-| `Hiveswarm.Telemetry` | `:telemetry` event helpers |
-| `Hiveswarm.Contact` | Struct: `node_id`, `host`, `port`, `last_seen`, `fail_count` |
+| `Hiveswarm.Contact` | Struct: `node_id`, `host`, `port`, `last_seen`, `token`, `fail_count` |
 
 ## Quick Start
 
@@ -123,6 +122,21 @@ Request messages include `sender_port` (the peer's listening port, not the
 ephemeral TCP source port) so receivers can populate their routing table
 correctly. Find responses include an HMAC `token` used to authorize subsequent
 Store RPCs.
+
+Four of the 13 message types (`announce_req`, `announce_resp`,
+`lookup_topic_req`, `lookup_topic_resp`) are defined in the codec but not
+wired into the client or server — topic discovery goes through the regular
+store/find_value operations instead, and the server answers them with a
+501 error response.
+
+## Limitations
+
+- Topic announcements are stored under a single DHT key per topic, so
+  concurrent announcers overwrite each other (last writer wins). A lookup
+  returns at most one remote announcement plus any local one.
+- Stored values are capped at 1024 bytes by default (`{:error, :value_too_large}`).
+- Stale buckets are periodically refreshed, but individual contacts are never
+  evicted automatically — failures only increment a contact's fail count.
 
 ## Development
 

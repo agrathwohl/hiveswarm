@@ -34,7 +34,7 @@ defmodule Hiveswarm.Lookup do
   end
 
   defp build_state(transport, own_id, own_port, routing_table, target, mode, opts) do
-    alpha = Keyword.get(opts, :alpha, @default_alpha)
+    alpha = Keyword.get(opts, :alpha, Application.get_env(:hiveswarm, :alpha, @default_alpha))
     k = Keyword.get(opts, :k, @default_k)
     timeout = Keyword.get(opts, :timeout, @default_timeout)
 
@@ -91,7 +91,9 @@ defmodule Hiveswarm.Lookup do
         Enum.reduce(results, state.tokens, fn
           {:ok, _contacts, responder_id, token}, acc when token != <<>> ->
             Map.put(acc, responder_id, token)
-          _, acc -> acc
+
+          _, acc ->
+            acc
         end)
 
       case check_for_value(results, state) do
@@ -137,16 +139,35 @@ defmodule Hiveswarm.Lookup do
 
     case state.mode do
       :find_node ->
-        case RPC.Client.find_node(state.transport, state.own_id, state.own_port, peer, state.target, timeout: state.timeout) do
+        case RPC.Client.find_node(
+               state.transport,
+               state.own_id,
+               state.own_port,
+               peer,
+               state.target,
+               timeout: state.timeout
+             ) do
           {:ok, %{contacts: contacts, token: token}} -> {:ok, contacts, contact.node_id, token}
           err -> err
         end
 
       :find_value ->
-        case RPC.Client.find_value(state.transport, state.own_id, state.own_port, peer, state.target, timeout: state.timeout) do
-          {:ok, %{value: nil, contacts: contacts, token: token}} -> {:ok, contacts, contact.node_id, token}
-          {:ok, %{value: value}} when not is_nil(value) -> {:found, value}
-          err -> err
+        case RPC.Client.find_value(
+               state.transport,
+               state.own_id,
+               state.own_port,
+               peer,
+               state.target,
+               timeout: state.timeout
+             ) do
+          {:ok, %{value: nil, contacts: contacts, token: token}} ->
+            {:ok, contacts, contact.node_id, token}
+
+          {:ok, %{value: value}} when not is_nil(value) ->
+            {:found, value}
+
+          err ->
+            err
         end
     end
   end

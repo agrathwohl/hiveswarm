@@ -21,3 +21,7 @@ hiveswarm-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# Local tool state (Claude Code / oh-my-claudecode session data).
+/.omc/
+/.remember/

@@ -15,7 +15,9 @@ defmodule Hiveswarm do
 
     case Discovery.lookup(topic) do
       peers when is_list(peers) ->
-        transport = Application.get_env(:hiveswarm, :actual_transport, Hiveswarm.Transport.TcpPlain)
+        transport =
+          Application.get_env(:hiveswarm, :actual_transport, Hiveswarm.Transport.TcpPlain)
+
         own_id = Application.fetch_env!(:hiveswarm, :own_id)
         own_port = Application.get_env(:hiveswarm, :port, 0)
 

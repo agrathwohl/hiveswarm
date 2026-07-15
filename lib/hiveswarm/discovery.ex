@@ -73,7 +73,9 @@ defmodule Hiveswarm.Discovery do
     # Try to store remotely via DHT lookup + store RPCs
     do_remote_store(topic_key, announcement, state)
 
-    new_announced = Map.put(state.announced, topic, %{key_pair: key_pair, last: DateTime.utc_now()})
+    new_announced =
+      Map.put(state.announced, topic, %{key_pair: key_pair, last: DateTime.utc_now()})
+
     {:reply, :ok, %{state | announced: new_announced}}
   end
 
@@ -88,8 +90,12 @@ defmodule Hiveswarm.Discovery do
     topic_key = Crypto.hash(topic)
 
     result =
-      case Lookup.find_value(state.transport, state.own_id, state.own_port, state.routing_table, topic_key,
-             alpha: 3,
+      case Lookup.find_value(
+             state.transport,
+             state.own_id,
+             state.own_port,
+             state.routing_table,
+             topic_key,
              k: 20,
              timeout: 5_000
            ) do
@@ -147,7 +153,6 @@ defmodule Hiveswarm.Discovery do
 
   defp do_remote_store(key, value, state) do
     case Lookup.find_node(state.transport, state.own_id, state.own_port, state.routing_table, key,
-           alpha: 3,
            k: 5,
            timeout: 3_000
          ) do
@@ -180,7 +185,10 @@ defmodule Hiveswarm.Discovery do
     <<payload::binary, sig::binary-size(64)>>
   end
 
-  defp decode_announcement(<<node_id::binary-size(32), host_len::8, host::binary-size(host_len), port::16, _sig::binary-size(64)>>) do
+  defp decode_announcement(
+         <<node_id::binary-size(32), host_len::8, host::binary-size(host_len), port::16,
+           _sig::binary-size(64)>>
+       ) do
     {:ok, %{node_id: node_id, host: host, port: port}}
   end
 

@@ -93,7 +93,9 @@ defmodule Hiveswarm.LookupTest do
       rt = setup_routing_table(own_id, [seed])
 
       target = Crypto.hash("target")
-      {:ok, result} = Lookup.find_node(TcpPlain, own_id, 0, rt, target, alpha: 1, k: 5, timeout: 3_000)
+
+      {:ok, result} =
+        Lookup.find_node(TcpPlain, own_id, 0, rt, target, alpha: 1, k: 5, timeout: 3_000)
 
       assert is_list(result)
     end
@@ -114,7 +116,8 @@ defmodule Hiveswarm.LookupTest do
       contact_a = make_contact(node_a_id, port_a)
       rt = setup_routing_table(own_id, [contact_a])
 
-      {:ok, result} = Lookup.find_node(TcpPlain, own_id, 0, rt, target, alpha: 1, k: 5, timeout: 3_000)
+      {:ok, result} =
+        Lookup.find_node(TcpPlain, own_id, 0, rt, target, alpha: 1, k: 5, timeout: 3_000)
 
       node_ids = Enum.map(result, & &1.node_id)
       # Should have found both nodes
@@ -132,7 +135,9 @@ defmodule Hiveswarm.LookupTest do
       rt = setup_routing_table(own_id, [seed])
       target = Crypto.hash("no_dup_target")
 
-      {:ok, _result} = Lookup.find_node(TcpPlain, own_id, 0, rt, target, alpha: 1, k: 5, timeout: 3_000)
+      {:ok, _result} =
+        Lookup.find_node(TcpPlain, own_id, 0, rt, target, alpha: 1, k: 5, timeout: 3_000)
+
       # If we got here without hanging, deduplication works
     end
   end

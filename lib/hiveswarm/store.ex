@@ -21,7 +21,13 @@ defmodule Hiveswarm.Store do
     GenServer.start_link(__MODULE__, opts, gen_opts)
   end
 
-  @doc "Store a key-value pair. Key must be a 32-byte binary."
+  @doc """
+  Store a key-value pair.
+
+  Keys are expected to be 32-byte binaries (SHA-256 hashes / node IDs)
+  but are not validated. Values larger than the store's `:max_value_size`
+  (default 1024 bytes) return `{:error, :value_too_large}`.
+  """
   @spec put(GenServer.server(), binary(), binary(), keyword()) :: :ok | {:error, term()}
   def put(store, key, value, opts \\ []) do
     GenServer.call(store, {:put, key, value, opts})
@@ -179,9 +185,10 @@ defmodule Hiveswarm.Store do
     # Find the entry with the oldest last_accessed
     result =
       :ets.foldl(
-        fn {key, _val, _ins, _exp, la}, nil -> {key, la}
-           {key, _val, _ins, _exp, la}, {_k, oldest} when la < oldest -> {key, la}
-           _, acc -> acc
+        fn
+          {key, _val, _ins, _exp, la}, nil -> {key, la}
+          {key, _val, _ins, _exp, la}, {_k, oldest} when la < oldest -> {key, la}
+          _, acc -> acc
         end,
         nil,
         table

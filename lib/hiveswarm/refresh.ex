@@ -2,8 +2,8 @@ defmodule Hiveswarm.Refresh do
   @moduledoc """
   Periodic routing table refresh.
 
-  Runs scheduled lookups on random IDs within each k-bucket's range
-  to keep the routing table current and evict stale contacts.
+  Runs scheduled lookups on random IDs within each stale k-bucket's
+  range to keep the routing table current.
   """
 
   use GenServer
@@ -53,7 +53,6 @@ defmodule Hiveswarm.Refresh do
         state.own_port,
         state.routing_table,
         target,
-        alpha: 3,
         k: 20,
         timeout: 5_000
       )

@@ -51,7 +51,17 @@ defmodule Hiveswarm.Transport.TcpNoise do
       Agent.get_and_update(conn, fn state ->
         nonce = encode_nonce(state.send_nonce)
         plaintext = IO.iodata_to_binary(data)
-        {ciphertext, tag} = :crypto.crypto_one_time_aead(:chacha20_poly1305, state.send_key, nonce, plaintext, <<>>, true)
+
+        {ciphertext, tag} =
+          :crypto.crypto_one_time_aead(
+            :chacha20_poly1305,
+            state.send_key,
+            nonce,
+            plaintext,
+            <<>>,
+            true
+          )
+
         frame = <<tag::binary-size(16), ciphertext::binary>>
         result = :gen_tcp.send(state.socket, frame)
         {result, %{state | send_nonce: state.send_nonce + 1}}
@@ -71,7 +81,15 @@ defmodule Hiveswarm.Transport.TcpNoise do
         {:ok, <<tag::binary-size(16), ciphertext::binary>>} ->
           nonce = encode_nonce(recv_nonce)
 
-          case :crypto.crypto_one_time_aead(:chacha20_poly1305, recv_key, nonce, ciphertext, <<>>, tag, false) do
+          case :crypto.crypto_one_time_aead(
+                 :chacha20_poly1305,
+                 recv_key,
+                 nonce,
+                 ciphertext,
+                 <<>>,
+                 tag,
+                 false
+               ) do
             plaintext when is_binary(plaintext) ->
               Agent.update(conn, fn s -> %{s | recv_nonce: s.recv_nonce + 1} end)
               {:ok, plaintext}

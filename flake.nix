@@ -16,9 +16,6 @@
           buildInputs = with pkgs; [
             elixir
             erlang
-            libsodium
-            pkg-config
-            gcc
           ];
 
           shellHook = ''
