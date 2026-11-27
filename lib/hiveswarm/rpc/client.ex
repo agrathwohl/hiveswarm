@@ -13,7 +13,9 @@ defmodule Hiveswarm.RPC.Client do
     PingRequest,
     FindNodeRequest,
     FindValueRequest,
-    StoreRequest
+    StoreRequest,
+    AnnounceRequest,
+    LookupTopicRequest
   }
 
   @default_timeout 5_000
@@ -59,6 +61,42 @@ defmodule Hiveswarm.RPC.Client do
       key: key,
       value: value,
       token: token
+    }
+
+    do_rpc(transport, peer, msg, txn, opts)
+  end
+
+  @doc """
+  Send an announce RPC.
+
+  The third argument (`advertise_port`) fills `sender_port` in the wire
+  message. It is the **advertised service port** — the port at which the
+  caller wants to be reached by peers who discover it via topic lookup.
+  This may differ from the caller's DHT RPC port.
+  """
+  def announce(transport, own_id, advertise_port, peer, topic, token, opts \\ []) do
+    txn = RPC.gen_txn_id()
+
+    msg = %AnnounceRequest{
+      txn_id: txn,
+      sender_id: own_id,
+      sender_port: advertise_port,
+      topic: topic,
+      token: token
+    }
+
+    do_rpc(transport, peer, msg, txn, opts)
+  end
+
+  @doc "Send a lookup_topic RPC."
+  def lookup_topic(transport, own_id, own_port, peer, topic, opts \\ []) do
+    txn = RPC.gen_txn_id()
+
+    msg = %LookupTopicRequest{
+      txn_id: txn,
+      sender_id: own_id,
+      sender_port: own_port,
+      topic: topic
     }
 
     do_rpc(transport, peer, msg, txn, opts)

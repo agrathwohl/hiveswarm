@@ -2,14 +2,20 @@ defmodule Hiveswarm.Discovery do
   @moduledoc """
   Topic-based peer discovery.
 
-  Allows nodes to advertise and discover peers interested in specific
-  topics, layered on top of the core Kademlia DHT. Uses DHT Store
-  operations for announcement persistence.
+  Allows nodes to advertise and discover peers interested in specific topics,
+  layered on top of the core Kademlia DHT. Uses BEP5-style per-topic peer
+  sets: announcements are token-gated and bound to the sender's source IP.
+
+  Remote topic entries expire by TTL (default 45 min) after a peer stops
+  re-announcing — there is no remote-delete RPC. Topic discovery is
+  eventually consistent and depends on routing-table stability across the
+  announce→lookup window.
   """
 
   use GenServer
 
-  alias Hiveswarm.{Crypto, Lookup, Store}
+  alias Hiveswarm.{Crypto, Lookup, TopicStore}
+  alias Hiveswarm.RPC.Client, as: RPCClient
 
   @reannounce_interval_ms :timer.minutes(15)
 
@@ -18,17 +24,22 @@ defmodule Hiveswarm.Discovery do
     GenServer.start_link(__MODULE__, opts, name: name)
   end
 
-  @doc "Announce presence on a topic."
-  def announce(discovery \\ __MODULE__, topic, key_pair) do
-    GenServer.call(discovery, {:announce, topic, key_pair}, 30_000)
+  @doc """
+  Announce presence on a topic.
+
+  `opts[:port]` sets the advertised service port (default: `own_port`).
+  The advertised port must be > 0.
+  """
+  def announce(discovery \\ __MODULE__, topic, opts \\ []) do
+    GenServer.call(discovery, {:announce, topic, opts}, 30_000)
   end
 
-  @doc "Remove announcement from a topic."
-  def unannounce(discovery \\ __MODULE__, topic, _key_pair) do
+  @doc "Remove local announcement for a topic. Remote entries persist until TTL (~45 min)."
+  def unannounce(discovery \\ __MODULE__, topic) do
     GenServer.call(discovery, {:unannounce, topic})
   end
 
-  @doc "Look up peers for a topic."
+  @doc "Look up peers for a topic. Returns `[%{node_id, host, port}]`."
   def lookup(discovery \\ __MODULE__, topic) do
     GenServer.call(discovery, {:lookup, topic}, 30_000)
   end
@@ -44,7 +55,7 @@ defmodule Hiveswarm.Discovery do
     own_id = Keyword.fetch!(opts, :own_id)
     own_port = Keyword.get(opts, :own_port, 0)
     routing_table = Keyword.get(opts, :routing_table, Hiveswarm.RoutingTable)
-    store = Keyword.get(opts, :store, Hiveswarm.Store)
+    topic_store = Keyword.get(opts, :topic_store, Hiveswarm.TopicStore)
     host = Keyword.get(opts, :host, "127.0.0.1")
 
     schedule_reannounce()
@@ -55,78 +66,67 @@ defmodule Hiveswarm.Discovery do
        own_id: own_id,
        own_port: own_port,
        routing_table: routing_table,
-       store: store,
+       topic_store: topic_store,
        host: host,
        announced: %{}
      }}
   end
 
   @impl true
-  def handle_call({:announce, topic, key_pair}, _from, state) do
-    topic_key = Crypto.hash(topic)
-
-    announcement = encode_announcement(state.own_id, state.host, state.own_port, key_pair)
-
-    # Store locally
-    Store.put(state.store, topic_key, announcement)
-
-    # Try to store remotely via DHT lookup + store RPCs
-    do_remote_store(topic_key, announcement, state)
-
-    new_announced =
-      Map.put(state.announced, topic, %{key_pair: key_pair, last: DateTime.utc_now()})
-
+  def handle_call({:announce, topic, opts}, _from, state) do
+    advertise_port = Keyword.get(opts, :port, state.own_port)
+    do_announce(topic, advertise_port, state)
+    new_announced = Map.put(state.announced, topic, %{port: advertise_port})
     {:reply, :ok, %{state | announced: new_announced}}
   end
 
   def handle_call({:unannounce, topic}, _from, state) do
-    topic_key = Crypto.hash(topic)
-    Store.delete(state.store, topic_key)
+    TopicStore.delete(state.topic_store, topic, state.own_id)
     new_announced = Map.delete(state.announced, topic)
     {:reply, :ok, %{state | announced: new_announced}}
   end
 
   def handle_call({:lookup, topic}, _from, state) do
-    topic_key = Crypto.hash(topic)
+    local = TopicStore.lookup(state.topic_store, topic)
 
-    result =
-      case Lookup.find_value(
+    remote =
+      case Lookup.find_node(
              state.transport,
              state.own_id,
              state.own_port,
              state.routing_table,
-             topic_key,
+             Crypto.hash(topic),
              k: 20,
              timeout: 5_000
            ) do
-        {:found, data} ->
-          case decode_announcement(data) do
-            {:ok, info} -> [info]
-            _ -> []
-          end
+        {:ok, closest} ->
+          closest
+          |> Enum.take(5)
+          |> Enum.flat_map(fn c ->
+            case RPCClient.lookup_topic(
+                   state.transport,
+                   state.own_id,
+                   state.own_port,
+                   %{host: c.host, port: c.port},
+                   topic,
+                   timeout: 3_000
+                 ) do
+              {:ok, resp} ->
+                Enum.map(resp.contacts, fn contact ->
+                  %{node_id: contact.node_id, host: contact.host, port: contact.port}
+                end)
 
-        {:ok, {:contacts, _}} ->
-          []
+              _ ->
+                []
+            end
+          end)
 
         _ ->
           []
       end
 
-    # Also check local store
-    local =
-      case Store.get(state.store, topic_key) do
-        {:ok, data} ->
-          case decode_announcement(data) do
-            {:ok, info} -> [info]
-            _ -> []
-          end
-
-        :not_found ->
-          []
-      end
-
     combined =
-      (result ++ local)
+      (remote ++ local)
       |> Enum.uniq_by(fn info -> info.node_id end)
 
     {:reply, combined, state}
@@ -138,11 +138,8 @@ defmodule Hiveswarm.Discovery do
 
   @impl true
   def handle_info(:reannounce, state) do
-    for {topic, %{key_pair: kp}} <- state.announced do
-      topic_key = Crypto.hash(topic)
-      announcement = encode_announcement(state.own_id, state.host, state.own_port, kp)
-      Store.put(state.store, topic_key, announcement)
-      do_remote_store(topic_key, announcement, state)
+    for {topic, %{port: advertise_port}} <- state.announced do
+      do_announce(topic, advertise_port, state)
     end
 
     schedule_reannounce()
@@ -151,48 +148,47 @@ defmodule Hiveswarm.Discovery do
 
   def handle_info(_, state), do: {:noreply, state}
 
-  defp do_remote_store(key, value, state) do
-    case Lookup.find_node(state.transport, state.own_id, state.own_port, state.routing_table, key,
+  defp do_announce(topic, advertise_port, state) do
+    TopicStore.insert(state.topic_store, topic, state.own_id, state.host, advertise_port)
+
+    case Lookup.find_node(
+           state.transport,
+           state.own_id,
+           state.own_port,
+           state.routing_table,
+           Crypto.hash(topic),
            k: 5,
            timeout: 3_000
          ) do
-      {:ok, contacts} ->
-        for c <- contacts, c.token != nil and c.token != <<>> do
-          peer = %{host: c.host, port: c.port}
+      {:ok, closest} ->
+        for c <- closest, c.node_id != state.own_id do
+          case RPCClient.find_node(
+                 state.transport,
+                 state.own_id,
+                 state.own_port,
+                 %{host: c.host, port: c.port},
+                 Crypto.hash(topic),
+                 timeout: 3_000
+               ) do
+            {:ok, %{token: tok}} when tok not in [nil, <<>>] ->
+              RPCClient.announce(
+                state.transport,
+                state.own_id,
+                advertise_port,
+                %{host: c.host, port: c.port},
+                topic,
+                tok
+              )
 
-          Hiveswarm.RPC.Client.store(
-            state.transport,
-            state.own_id,
-            state.own_port,
-            peer,
-            key,
-            value,
-            c.token,
-            timeout: 3_000
-          )
+            _ ->
+              :ok
+          end
         end
 
       _ ->
         :ok
     end
   end
-
-  defp encode_announcement(node_id, host, port, key_pair) do
-    host_bin = to_string(host)
-    host_len = byte_size(host_bin)
-    payload = <<node_id::binary-size(32), host_len::8, host_bin::binary, port::16>>
-    sig = Crypto.sign(payload, key_pair.secret_key)
-    <<payload::binary, sig::binary-size(64)>>
-  end
-
-  defp decode_announcement(
-         <<node_id::binary-size(32), host_len::8, host::binary-size(host_len), port::16,
-           _sig::binary-size(64)>>
-       ) do
-    {:ok, %{node_id: node_id, host: host, port: port}}
-  end
-
-  defp decode_announcement(_), do: {:error, :invalid}
 
   defp schedule_reannounce do
     Process.send_after(self(), :reannounce, @reannounce_interval_ms)

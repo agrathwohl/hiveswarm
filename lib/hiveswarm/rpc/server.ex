@@ -11,7 +11,7 @@ defmodule Hiveswarm.RPC.Server do
 
   use GenServer
 
-  alias Hiveswarm.{Contact, Crypto, RPC, RoutingTable, Store}
+  alias Hiveswarm.{Contact, Crypto, RPC, RoutingTable, Store, TopicStore}
 
   alias Hiveswarm.RPC.{
     PingRequest,
@@ -22,6 +22,10 @@ defmodule Hiveswarm.RPC.Server do
     FindValueResponse,
     StoreRequest,
     StoreResponse,
+    AnnounceRequest,
+    AnnounceResponse,
+    LookupTopicRequest,
+    LookupTopicResponse,
     ErrorResponse
   }
 
@@ -34,6 +38,7 @@ defmodule Hiveswarm.RPC.Server do
     own_id = Keyword.fetch!(opts, :own_id)
     listener = Keyword.get(opts, :listener)
     port = Keyword.get(opts, :port, 0)
+    topic_store = Keyword.get(opts, :topic_store, Hiveswarm.TopicStore)
     name = Keyword.get(opts, :name)
     gen_opts = if name, do: [name: name], else: []
 
@@ -45,6 +50,7 @@ defmodule Hiveswarm.RPC.Server do
         port: port,
         routing_table: routing_table,
         store: store,
+        topic_store: topic_store,
         own_id: own_id,
         token_secret: Crypto.random_bytes(32),
         token_secret_prev: Crypto.random_bytes(32)
@@ -117,10 +123,10 @@ defmodule Hiveswarm.RPC.Server do
     state.transport.close(conn)
   end
 
+  defp update_routing_table(%AnnounceRequest{}, _peer_info, _state), do: :ok
+
   defp update_routing_table(msg, peer_info, state) do
     if Map.has_key?(msg, :sender_id) do
-      # Use sender_port from the message (the peer's listening port),
-      # NOT peer_info.port (the ephemeral TCP source port).
       port = Map.get(msg, :sender_port, peer_info.port)
 
       contact = %Contact{
@@ -177,6 +183,36 @@ defmodule Hiveswarm.RPC.Server do
     else
       %StoreResponse{txn_id: txn, sender_id: state.own_id, ok: false}
     end
+  end
+
+  defp dispatch(
+         %AnnounceRequest{
+           txn_id: txn,
+           sender_id: sid,
+           sender_port: sp,
+           topic: topic,
+           token: token
+         },
+         peer,
+         state
+       ) do
+    ok =
+      valid_token?(token, peer.host, state) and sp > 0 and
+        TopicStore.insert(state.topic_store, topic, sid, peer.host, sp) == :ok
+
+    %AnnounceResponse{txn_id: txn, sender_id: state.own_id, ok: ok}
+  end
+
+  defp dispatch(%LookupTopicRequest{txn_id: txn, topic: topic}, _peer, state) do
+    now = DateTime.utc_now()
+
+    contacts =
+      TopicStore.lookup(state.topic_store, topic)
+      |> Enum.map(fn %{node_id: nid, host: host, port: port} ->
+        %Contact{node_id: nid, host: host, port: port, last_seen: now}
+      end)
+
+    %LookupTopicResponse{txn_id: txn, sender_id: state.own_id, contacts: contacts}
   end
 
   defp dispatch(%{txn_id: txn}, _peer, _state) do

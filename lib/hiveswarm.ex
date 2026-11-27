@@ -8,10 +8,15 @@ defmodule Hiveswarm do
 
   alias Hiveswarm.{Discovery, PeerSupervisor, Peer, RoutingTable}
 
-  @doc "Announce on a topic, look up peers, and connect to them."
+  @doc """
+  Announce on a topic, look up peers, and connect to them.
+
+  Advertises this node's own DHT port (configured `:port`) so that Peer
+  connections established by this function correctly target other nodes'
+  DHT RPC ports.
+  """
   def join(topic) do
-    key_pair = Application.fetch_env!(:hiveswarm, :key_pair)
-    Discovery.announce(topic, key_pair)
+    Discovery.announce(topic)
 
     case Discovery.lookup(topic) do
       peers when is_list(peers) ->
@@ -44,8 +49,7 @@ defmodule Hiveswarm do
 
   @doc "Unannounce from a topic and disconnect topic peers."
   def leave(topic) do
-    key_pair = Application.fetch_env!(:hiveswarm, :key_pair)
-    Discovery.unannounce(topic, key_pair)
+    Discovery.unannounce(topic)
 
     for pid <- PeerSupervisor.list_peers() do
       try do

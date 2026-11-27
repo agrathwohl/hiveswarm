@@ -36,12 +36,14 @@ defmodule Hiveswarm.Application do
       {Hiveswarm.Store, [name: Hiveswarm.Store]},
       {Hiveswarm.RoutingTable, [own_id: own_id, k: k, name: Hiveswarm.RoutingTable]},
       {Hiveswarm.PeerSupervisor, [name: Hiveswarm.PeerSupervisor]},
+      {Hiveswarm.TopicStore, [name: Hiveswarm.TopicStore]},
       {Hiveswarm.RPC.Server,
        [
          transport: transport,
          port: port,
          routing_table: Hiveswarm.RoutingTable,
          store: Hiveswarm.Store,
+         topic_store: Hiveswarm.TopicStore,
          own_id: own_id,
          name: Hiveswarm.RPC.Server
        ]},
@@ -51,7 +53,7 @@ defmodule Hiveswarm.Application do
          own_id: own_id,
          own_port: port,
          routing_table: Hiveswarm.RoutingTable,
-         store: Hiveswarm.Store,
+         topic_store: Hiveswarm.TopicStore,
          host: host,
          name: Hiveswarm.Discovery
        ]},

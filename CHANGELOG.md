@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.2.0
+
+Multi-peer topic discovery release.
+
+- Wired the four previously codec-only RPC message types (`announce_req`,
+  `announce_resp`, `lookup_topic_req`, `lookup_topic_resp`) into the client
+  and server — all 13 message types are now handled end-to-end
+- New `Hiveswarm.TopicStore`: ETS-backed per-topic peer sets with TTL expiry
+  (default 45 min), a total-topic cap, and a per-topic peer cap
+- `Hiveswarm.Discovery` now does BEP5-style multi-peer topic discovery
+  (token-gated announce + lookup_topic RPCs to the k-closest nodes),
+  replacing the previous last-writer-wins single-blob storage. `announce`
+  binds the announcer's source IP; `unannounce` clears the local entry
+  (remote entries expire by TTL)
+- Discovery/`join`/`leave` API change: `announce`/`unannounce`/`lookup` no
+  longer take a `key_pair` (announcements are token-gated and source-IP-bound
+  rather than signed); `announce/2,3` accepts an optional `:port` to advertise
+  a service port distinct from the DHT port
+
 ## v0.1.1
 
 Documentation/code alignment release.

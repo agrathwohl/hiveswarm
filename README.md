@@ -9,7 +9,7 @@ on top of OTP with zero external NIF dependencies.
 
 - **Kademlia DHT** — XOR distance metric, 256-bucket routing table, iterative lookups with configurable alpha concurrency
 - **Binary RPC protocol** — compact custom encoding (not `term_to_binary`), 13 message types, 4-byte transaction IDs
-- **Topic discovery** — announce/lookup peers by topic, automatic re-announcement
+- **Topic discovery** — BEP5-style per-topic peer sets: token-gated announces bound to the sender's source IP, TTL expiry, multi-peer lookups, automatic re-announcement
 - **Encrypted transport** — X25519 key exchange + ChaCha20-Poly1305 AEAD via OTP's `:crypto`
 - **ETS-backed store** — TTL expiration, LRU eviction, bounded size
 - **OTP supervision tree** — one_for_one strategy, DynamicSupervisor for peers
@@ -20,6 +20,7 @@ on top of OTP with zero external NIF dependencies.
 ```
 Hiveswarm.Application (Supervisor)
 ├── Hiveswarm.Store              (ETS key-value with TTL/LRU)
+├── Hiveswarm.TopicStore         (ETS per-topic peer sets with TTL)
 ├── Hiveswarm.RoutingTable       (256 k-buckets GenServer)
 ├── Hiveswarm.PeerSupervisor     (DynamicSupervisor)
 ├── Hiveswarm.RPC.Server         (TCP accept loop + dispatch)
@@ -35,14 +36,15 @@ Hiveswarm.Application (Supervisor)
 | `Hiveswarm` | Top-level API: `join/1`, `leave/1`, `peers/0`, `peers/1`, `send_to/2`, `broadcast/2`, `node_id/0`, `info/0` |
 | `Hiveswarm.Crypto` | Ed25519 keypairs, SHA-256, XOR distance, signing |
 | `Hiveswarm.RPC` | Binary message encoding/decoding (13 types) |
-| `Hiveswarm.RPC.Client` | Outgoing RPCs: ping, find_node, find_value, store (stateless, connection-per-request) |
+| `Hiveswarm.RPC.Client` | Outgoing RPCs: ping, find_node, find_value, store, announce, lookup_topic (stateless, connection-per-request) |
 | `Hiveswarm.RPC.Server` | Incoming RPC handler + routing table updates |
 | `Hiveswarm.Lookup` | Iterative Kademlia `find_node` / `find_value` |
 | `Hiveswarm.Store` | ETS storage with TTL, LRU eviction, size bounds (defaults: 24 h TTL, 10k entries, 1 KiB max value) |
+| `Hiveswarm.TopicStore` | ETS per-topic peer sets: token-gated inserts, TTL expiry, per-topic and total caps |
 | `Hiveswarm.RoutingTable` | 256 flat k-buckets: insert, closest, remove, stale tracking, refresh candidates |
 | `Hiveswarm.Peer` | Per-peer GenServer with ping keepalive |
 | `Hiveswarm.PeerSupervisor` | DynamicSupervisor for Peer processes |
-| `Hiveswarm.Discovery` | Topic-based announce + lookup via DHT store |
+| `Hiveswarm.Discovery` | Topic-based announce + lookup via announce/lookup_topic RPCs |
 | `Hiveswarm.Bootstrap` | Network join: ping seeds, self-lookup, bucket refresh |
 | `Hiveswarm.Refresh` | Periodic stale bucket refresh |
 | `Hiveswarm.Transport` | Behaviour (8 callbacks) |
@@ -121,19 +123,20 @@ Binary envelope: `<<version::8, type::8, txn_id::binary-4, payload::binary>>`
 Request messages include `sender_port` (the peer's listening port, not the
 ephemeral TCP source port) so receivers can populate their routing table
 correctly. Find responses include an HMAC `token` used to authorize subsequent
-Store RPCs.
-
-Four of the 13 message types (`announce_req`, `announce_resp`,
-`lookup_topic_req`, `lookup_topic_resp`) are defined in the codec but not
-wired into the client or server — topic discovery goes through the regular
-store/find_value operations instead, and the server answers them with a
-501 error response.
+Store and Announce RPCs. All 13 message types are wired end-to-end, including
+`announce`/`lookup_topic`, which back BEP5-style per-topic peer discovery.
 
 ## Limitations
 
-- Topic announcements are stored under a single DHT key per topic, so
-  concurrent announcers overwrite each other (last writer wins). A lookup
-  returns at most one remote announcement plus any local one.
+- Topic discovery is eventually consistent: it depends on routing-table
+  stability across the announce→lookup window, so in a churning or very small
+  network an announce and a lookup may target slightly different node sets.
+- Topic announcements register the announcer's connection source IP (the
+  server never trusts a host from the message). A peer can only announce a
+  port on its own IP.
+- Remote topic entries expire by TTL (default 45 min) after a peer stops
+  re-announcing — there is no remote-delete RPC, so `unannounce` only clears
+  the local entry.
 - Stored values are capped at 1024 bytes by default (`{:error, :value_too_large}`).
 - Stale buckets are periodically refreshed, but individual contacts are never
   evicted automatically — failures only increment a contact's fail count.
